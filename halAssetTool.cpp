@@ -2,75 +2,18 @@
 #include <assert.h>
 #include <fstream>
 #include <vector>
+#include <string>
 
 #define ARRAY_COUNT(x) (sizeof(x)/sizeof(x[0]))
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
-#include "sp.h"
-
-u32 FILE_013_XBOX_IMAGE_OFFSET = 0x2B8;
-u32 FILE_013_WHITE_SQUARE = 0x6F0;
-u32 FILE_013_PORTRAIT_QUESTION_MARK_IMAGE_OFFSET = 0xF68;
-u32 FILE_013_BLACK_SQUARE = 0x13d0;
-u32 FILE_013_PORTRAIT_FIRE_BG_IMAGE_OFFSET = 0x24D0;
-u32 FILE_013_MARIO_OFFSET = 0x4728;
-u32 FILE_013_LUIGI_OFFSET = 0x6978;
-u32 FILE_013_DONKEY_OFFSET = 0x8bc8;
-u32 FILE_013_SAMUS_OFFSET = 0xae18;
-u32 FILE_013_FOX_OFFSET = 0xd068;
-u32 FILE_013_KIRBY_OFFSET = 0xf2b8;
-u32 FILE_013_LINK_OFFSET = 0x11508;
-u32 FILE_013_YOSHI_OFFSET = 0x13758;
-u32 FILE_013_PIKACHU_OFFSET = 0x159a8;
-u32 FILE_013_NESS_OFFSET = 0x17bf8;
-u32 FILE_013_CAPTAIN_OFFSET = 0x19e48;
-u32 FILE_013_JIGGLYPUFF_OFFSET = 0x1c098;
-u32 FILE_013_CAPTAIN_SHADOW_OFFSET = 0x1e2e8;
-u32 FILE_013_LUIGI_SHADOW_OFFSET = 0x20538;
-u32 FILE_013_NESS_SHADOW_OFFSET = 0x22788;
-u32 FILE_013_JIGGLYPUFF_SHADOW_OFFSET = 0x249d8;
-
-u32 FILE_30_PEACHS_CASTLE_TEXT = 0x1f8;
-u32 FILE_30_SECTOR_Z_TEXT = 0x438;
-u32 FILE_30_CONGO_JUNGLE_TEXT = 0x678;
-u32 FILE_30_PLANET_ZEBES_TEXT = 0x8b8;
-u32 FILE_30_HYRULE_CASTLE_TEXT = 0xb10;
-u32 FILE_30_YOSHIS_ISLAND_TEXT = 0xd58;
-u32 FILE_30_SAFFRON_CITY_TEXT = 0xf98;
-u32 FILE_30_MUSHROOM_KINGDOM_TEXT = 0x11d8;
-u32 FILE_30_DREAM_LAND_TEXT = 0x1418;
-u32 FILE_30_CURSOR = 0x1ab8;
-u32 FILE_30_QUESTION_MARK = 0x1dd8;
-u32 FILE_30_STAGE_SELECT_TEXT = 0x26a0;
-u32 FILE_30_WOODEN_CIRCLE = 0x3840;
-u32 FILE_30_PLATE_RIGHT = 0x3c68;
-u32 FILE_30_PLATE_MIDDLE = 0x3d68;
-u32 FILE_30_PLATE_LEFT = 0x3fa8;
-u32 FILE_30_PEACHS_CASTLE = 0x4d88;
-u32 FILE_30_SECTOR_Z = 0x5b68;
-u32 FILE_30_CONGO_JUNGLE = 0x6948;
-u32 FILE_30_PLANET_ZEBES = 0x7728;
-u32 FILE_30_HYRULE_CASTLE = 0x8508;
-u32 FILE_30_YOSHIS_ISLAND = 0x92e8;
-u32 FILE_30_SAFFRON_CITY = 0xa0c8;
-u32 FILE_30_MUSHROOM_KINGDOM = 0xaea8;
-u32 FILE_30_DREAM_LAND = 0xbc88;
-u32 FILE_30_TILES = 0xc728;
-u32 FILE_30_RANDOM_SMALL = 0xcb10;
-u32 FILE_30_RANDOM_BIG = 0xde30;
-
-u32 FILE_38_1P = 0x258;
-u32 FILE_38_2P = 0x4f8;
-u32 FILE_38_3P = 0x798;
-u32 FILE_38_4P = 0xa38;
-u32 FILE_38_CP = 0xcd8;
-u32 FILE_38_ALLY = 0xeb8;
+#include "sprite.h"
 
 void changeEndianness(u8* c, u32 n)
 {
-	static std::vector<u8> temp;
-	temp.resize(n);
+	assert(n <= 64);
+	static unsigned char temp[64];
 	for (int i = 0; i < n; temp[i] = c[i], i++);
 	for (int i = 0; i < n; c[i] = temp[n - 1 - i], i++);
 }
@@ -218,7 +161,7 @@ void bitmapPrint(Bitmap* bitmap)
 	printf("   buf.pointer:     0x%x (0x%x = %d)\n\n", bitmap->buf.pointer, bitmap->buf.pointer * 4, bitmap->buf.pointer * 4);
 }
 
-
+// used for debugging
 void printBits(size_t const size, void const* const ptr)
 {
 	unsigned char* b = (unsigned char*)ptr;
@@ -234,6 +177,7 @@ void printBits(size_t const size, void const* const ptr)
 	puts("");
 }
 
+// taken from https://github.com/tehzz/ssb64-image-file-util
 void imgWordSwap(u32 height, u32 width, u32 bpp, u8* dv)
 {
 	u32 baseOffset;
@@ -465,7 +409,6 @@ void SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmap
 				{
 					u8 r, g, b, a;
 					void* sampledByte = SampleRgba(y, x, bitmapBuffers[i], widthWithPadding, bitsPerPixel, &r, &g, &b, &a);
-					//printf("sampled byte: %p\n", sampledByte);
 					pngBuffer[writtenRows * 4 * targetWidth + x * 4 + 0] = r;
 					pngBuffer[writtenRows * 4 * targetWidth + x * 4 + 1] = g;
 					pngBuffer[writtenRows * 4 * targetWidth + x * 4 + 2] = b;
@@ -495,64 +438,79 @@ void SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmap
 	stbi_write_png(outputFilePath, targetWidth, targetHeight, 4, pngBuffer.data(), targetWidth * 4);
 }
 
-
-int main()
+static std::vector<u8> relocFileBuffer;
+bool LoadRelocFile(const char* relocFilePath, u8** outBuffer)
 {
-	assert(sizeof(short) == 2);
-	assert(sizeof(unsigned long) == 4);
+	std::ifstream file(relocFilePath, std::ios::binary | std::ios::ate);
+	if (!file.is_open())
+		return false;
+	std::streamsize size = file.tellg();
+	file.seekg(0, std::ios::beg);
+	relocFileBuffer.resize(size);
+	if (!file.read((char*)relocFileBuffer.data(), size))
+		return false;
 
-	struct PerFileInfo {
-		u32 fileId;
-		const char* relocFilePath;
-		u32* offsets;
-		u32 offsetCount;
-	};
-	PerFileInfo perFileInfo[] = {
-		{ 19, "files/19.vpk0.bin", &FILE_013_XBOX_IMAGE_OFFSET, 21 },
-		{ 30, "files/30.vpk0.bin", &FILE_30_PEACHS_CASTLE_TEXT, 28 },
-		{ 38, "files/38.vpk0.bin", &FILE_38_1P, 6 },
-	};
+	*outBuffer = relocFileBuffer.data();
+	return true;
+}
 
-	
-	for (u32 currentFile = 0; currentFile < ARRAY_COUNT(perFileInfo); currentFile++)
+int main(int argc, char** argv)
+{
+	if (argc <= 1)
 	{
-		std::ifstream file(perFileInfo[currentFile].relocFilePath, std::ios::binary | std::ios::ate);
-		if (!file.is_open())
+		printf("Usage: assetTool <fileDescriptionFilePath>");
+		return -1;
+	}
+
+	std::ifstream descriptionFile(argv[1]);
+	if (!descriptionFile.is_open())
+	{
+		printf("Description file not found: %s\n", argv[1]);
+		return 1;
+	}
+
+	u8* relocFileBuffer = NULL;
+	std::string line;
+	s32 currentRelocFile = -1;
+	while (std::getline(descriptionFile, line))
+	{
+		if (line.length() < 1)
+			continue;
+		if (line[0] == '[')
 		{
-			printf("File not found: %s\n", perFileInfo[currentFile].relocFilePath);
-			exit(-1);
+			std::string relocFilePath = line.substr(1, line.length() - 2);
+			if (!LoadRelocFile(relocFilePath.c_str(), &relocFileBuffer))
+			{
+				printf("Reloc file not found: %s\n", relocFilePath.c_str());
+				return 2;
+			}
+			currentRelocFile++;
 		}
-
-		std::streamsize size = file.tellg();
-		file.seekg(0, std::ios::beg);
-		std::vector<u8> buffer(size);
-		if (!file.read((char*)buffer.data(), size))
-			exit(1);
-
-		u32* currentOffset = perFileInfo[currentFile].offsets;
-		for (u32 i = 0; i < perFileInfo[currentFile].offsetCount; i++, currentOffset++)
+		else if (line.rfind("sprite", 0) == 0)
 		{
-			u32 targetOffset = *currentOffset;
-			printf("targetOffset: 0x%x = %d\n", targetOffset, targetOffset);
-			Sprite* sprite = (Sprite*)((u64)buffer.data() + targetOffset);
+			std::string name, offsetString;
+			u32 q = 7, p = 7;
+			for (; line[p] != ' '; p++);
+			name = line.substr(q, p - q);
+			q = p + 1;
+			offsetString = line.substr(q);
+
+			u32 targetOffset = std::stoul(offsetString, nullptr, 16);
+			Sprite* sprite = (Sprite*)((u64)relocFileBuffer + targetOffset);
 			fixSpriteEndianness(sprite);
-			spritePrint(sprite);
-			Bitmap* bitmaps = (Bitmap*)((u64)buffer.data() + (sprite->bitmap.pointer * 4));
+			Bitmap* bitmaps = (Bitmap*)((u64)relocFileBuffer + (sprite->bitmap.pointer * 4));
 			fixBitmapEndianness(bitmaps, sprite->nbitmaps);
-			for (int i = 0; i < sprite->nbitmaps; i++)
-				bitmapPrint(&bitmaps[i]);
 			std::vector<u8*> bitmapBuffers;
 			bitmapBuffers.resize(sprite->nbitmaps);
 			for (int i = 0; i < sprite->nbitmaps; i++)
-				bitmapBuffers[i] = (u8*)((u64)buffer.data() + (bitmaps[i].buf.pointer * 4));
+				bitmapBuffers[i] = (u8*)((u64)relocFileBuffer + (bitmaps[i].buf.pointer * 4));
 			u8* palette = NULL;
 			if (sprite->nTLUT > 0)
 			{
-				palette = (u8*)((u64)buffer.data() + (sprite->LUT.pointer * 4));
+				palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
 			}
-
 			char pngFilePath[64];
-			sprintf_s(pngFilePath, "output_images/%u_%x.png", perFileInfo[currentFile].fileId, targetOffset);
+			sprintf_s(pngFilePath, "output_images/%u_%s.png", currentRelocFile, name.c_str());
 			SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath);
 		}
 	}
