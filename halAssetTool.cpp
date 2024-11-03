@@ -85,7 +85,7 @@ void spritePrint(Sprite* sprite)
 	printf("Sprite 0x%llx:\n", (unsigned long long)sprite);
 	printf("   x, y:           %d, %d\n", sprite->x, sprite->y);
 	printf("   width, height:  %d, %d\n", sprite->width, sprite->height);
-	printf("   scalex, scaley: %d, %d\n", sprite->scalex, sprite->scaley);
+	printf("   scalex, scaley: %f, %f\n", sprite->scalex, sprite->scaley);
 	printf("   expx, expy:     %d, %d\n", sprite->expx, sprite->expy);
 	printf("   attr:           0x%x\n", sprite->attr);
 	printf("   zdepth:         %d\n", sprite->zdepth);
@@ -456,9 +456,9 @@ bool LoadRelocFile(const char* relocFilePath, u8** outBuffer)
 
 int main(int argc, char** argv)
 {
-	if (argc <= 1)
+	if (argc <= 3)
 	{
-		printf("Usage: assetTool <fileDescriptionFilePath>");
+		printf("Usage:\n   assetTool x <fileDescriptionFilePath> <relocFilesFolder> <outputFolder>\n");
 		return -1;
 	}
 
@@ -478,7 +478,8 @@ int main(int argc, char** argv)
 			continue;
 		if (line[0] == '[')
 		{
-			std::string relocFilePath = line.substr(1, line.length() - 2);
+			std::string relocFilePath(argv[2]);
+			relocFilePath += line.substr(1, line.length() - 2);
 			if (!LoadRelocFile(relocFilePath.c_str(), &relocFileBuffer))
 			{
 				printf("Reloc file not found: %s\n", relocFilePath.c_str());
@@ -510,7 +511,7 @@ int main(int argc, char** argv)
 				palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
 			}
 			char pngFilePath[64];
-			sprintf_s(pngFilePath, "output_images/%u_%s.png", currentRelocFile, name.c_str());
+			sprintf(pngFilePath, "%s/%li_%s.png", argv[3], currentRelocFile, name.c_str());
 			SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath);
 		}
 	}
