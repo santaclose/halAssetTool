@@ -313,6 +313,13 @@ void* SampleGrayscaleAlpha(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u3
 		*outA = (*outA) | ((*outA) << 4);
 		return &bitmapBuffer[targetByte];
 	}
+	case 16:
+	{
+		u32 targetByte = (widthInPixels * y + x) * 2;
+		*outI = bitmapBuffer[targetByte + 0];
+		*outA = bitmapBuffer[targetByte + 1];
+		return &bitmapBuffer[targetByte];
+	}
 	default:
 		assert(false);
 	}
@@ -350,12 +357,13 @@ void* SampleRgba(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u32 bitsPerP
 	}
 }
 
-void SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmapBuffers, u8* palette, const char* outputFilePath)
+bool SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmapBuffers, u8* palette, const char* outputFilePath)
 {
 	u32 targetWidth = sprite->width;
 	u32 targetHeight = sprite->height;
 	u32 bitsPerPixel = spriteGetBpp(sprite);
-	assert(bitsPerPixel != ~0U);
+	if (bitsPerPixel == ~0U)
+		return false;
 
 	u32 actualHeightSum = 0;
 	for (u32 i = 0; i < sprite->nbitmaps; i++)
@@ -425,7 +433,7 @@ void SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmap
 					break;
 				}
 				default:
-					assert(false);
+					return false;
 				}
 			}
 		}
@@ -434,6 +442,7 @@ void SpriteToPng(Sprite* sprite, Bitmap* bitmaps, const std::vector<u8*>& bitmap
 	}
 
 	stbi_write_png(outputFilePath, targetWidth, targetHeight, 4, pngBuffer.data(), targetWidth * 4);
+	return true;
 }
 
 static std::vector<u8> relocFileBuffer;
@@ -504,7 +513,11 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 			}
 			char pngFilePath[256];
 			sprintf(pngFilePath, "%s/%s_%s.png", outputFolderPath, currentRelocFileName.c_str(), name.c_str());
-			SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath);
+			if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
+			{
+				printf("Failed to convert sprite %lx to png:\n", targetOffset);
+				spritePrint(sprite);
+			}
 		}
 	}
 	return 0;
