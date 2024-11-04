@@ -4,8 +4,6 @@
 #include <vector>
 #include <string>
 
-#define ARRAY_COUNT(x) (sizeof(x)/sizeof(x[0]))
-
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #include "sprite.h"
@@ -454,38 +452,32 @@ bool LoadRelocFile(const char* relocFilePath, u8** outBuffer)
 	return true;
 }
 
-int main(int argc, char** argv)
+int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPath, const char* outputFolderPath)
 {
-	if (argc <= 3)
-	{
-		printf("Usage:\n   assetTool x <fileDescriptionFilePath> <relocFilesFolder> <outputFolder>\n");
-		return -1;
-	}
-
-	std::ifstream descriptionFile(argv[1]);
+	std::ifstream descriptionFile(fileDescriptionFilePath);
 	if (!descriptionFile.is_open())
 	{
-		printf("Description file not found: %s\n", argv[1]);
+		printf("Description file not found: %s\n", fileDescriptionFilePath);
 		return 1;
 	}
 
+	std::string currentRelocFileName;
 	u8* relocFileBuffer = NULL;
 	std::string line;
-	s32 currentRelocFile = -1;
 	while (std::getline(descriptionFile, line))
 	{
 		if (line.length() < 1)
 			continue;
 		if (line[0] == '[')
 		{
-			std::string relocFilePath(argv[2]);
-			relocFilePath += line.substr(1, line.length() - 2);
+			currentRelocFileName = line.substr(1, line.length() - 2);
+			std::string relocFilePath(relocFilesFolderPath);
+			relocFilePath += currentRelocFileName;
 			if (!LoadRelocFile(relocFilePath.c_str(), &relocFileBuffer))
 			{
 				printf("Reloc file not found: %s\n", relocFilePath.c_str());
 				return 2;
 			}
-			currentRelocFile++;
 		}
 		else if (line.rfind("sprite", 0) == 0)
 		{
@@ -510,9 +502,31 @@ int main(int argc, char** argv)
 			{
 				palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
 			}
-			char pngFilePath[64];
-			sprintf(pngFilePath, "%s/%li_%s.png", argv[3], currentRelocFile, name.c_str());
+			char pngFilePath[256];
+			sprintf(pngFilePath, "%s/%s_%s.png", outputFolderPath, currentRelocFileName.c_str(), name.c_str());
 			SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath);
 		}
+	}
+	return 0;
+}
+
+int Usage()
+{
+	printf("Usage:\n");
+	printf("Extract:  assetTool x <fileDescriptionFilePath> <relocFilesFolderPath> <outputFolderPath>\n");
+	return -1;
+}
+
+int main(int argc, char** argv)
+{
+	if (argc <= 3)
+		return Usage();
+
+	switch (argv[1][0])
+	{
+	case 'x':
+		return Extract(argv[2], argv[3], argv[4]);
+	default:
+		return Usage();
 	}
 }
