@@ -8,6 +8,46 @@
 #include "stb_image_write.h"
 #include "sprite.h"
 
+
+u8 lbCommonGetBitmapDecodeNibble(u8 index)
+{
+	u8 array[] = { 0x00, 0x05, 0x0A, 0x0F };
+	return array[index];
+}
+
+void lbCommonDecodeBitmapSiz4b(u8 *bitmap_csr, u8 *bitmap_buf, u8 *bitmap_start)
+{
+	while (bitmap_csr >= bitmap_start)
+	{
+		u8 temp;
+		bitmap_buf[0] = lbCommonGetBitmapDecodeNibble(*bitmap_csr & 3);
+		bitmap_buf[0] |= lbCommonGetBitmapDecodeNibble((*bitmap_csr & 12) >> 2) << 4;
+		bitmap_buf[-1] = lbCommonGetBitmapDecodeNibble((*bitmap_csr & 48) >> 4);
+		temp = lbCommonGetBitmapDecodeNibble((*bitmap_csr & 192) >> 6);
+		bitmap_csr--;
+		bitmap_buf -= 2;
+		bitmap_buf[1] |= temp << 4;
+	}
+}
+
+void lbCommonDecodeSpriteBitmapsSiz4b(Sprite *sprite, Bitmap *bitmaps, std::vector<u8*>& bitmapBuffers)
+{
+	s32 n;
+	Bitmap *bitmap;
+
+	for (n = sprite->nbitmaps, bitmap = bitmaps; n > 0; n--)
+	{
+		s32 res = (bitmap[n - 1].width_img / 2) * bitmap[n - 1].actualHeight;
+		lbCommonDecodeBitmapSiz4b
+		(
+			(u8*) ((u8*)bitmapBuffers[n - 1] + (res / 2) - 1),
+			(u8*) ((u8*)bitmapBuffers[n - 1] + (res - 1)),
+			(u8*) ((u8*)bitmapBuffers[n - 1])
+		);
+	}
+	sprite->bmsiz = G_IM_SIZ_4b;
+}
+
 void changeEndianness(u8* c, u32 n)
 {
 	assert(n <= 64);
@@ -511,11 +551,15 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 			{
 				palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
 			}
+			if (sprite->bmsiz == G_IM_SIZ_4c)
+			{
+				lbCommonDecodeSpriteBitmapsSiz4b(sprite, bitmaps, bitmapBuffers);
+			}
 			char pngFilePath[256];
 			sprintf(pngFilePath, "%s/%s_%s.png", outputFolderPath, currentRelocFileName.c_str(), name.c_str());
 			if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
 			{
-				printf("Failed to convert sprite %lx to png:\n", targetOffset);
+				printf("Failed to convert sprite %lx in file %s to png:\n", targetOffset, currentRelocFileName.c_str());
 				spritePrint(sprite);
 			}
 		}
