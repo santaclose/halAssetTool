@@ -3,11 +3,14 @@
 #include <fstream>
 #include <vector>
 #include <string>
+#include <filesystem>
+#include <unordered_map>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 #include "sprite.h"
 
+#define COMPRESSED_FILE_COUNT 499
 
 u8 lbCommonGetBitmapDecodeNibble(u8 index)
 {
@@ -501,6 +504,14 @@ bool LoadRelocFile(const char* relocFilePath, u8** outBuffer)
 	return true;
 }
 
+inline std::string ExtractedFileNameFromFileId(int fileId)
+{
+	if (fileId < COMPRESSED_FILE_COUNT)
+		return std::to_string(fileId) + std::string(".vpk0.bin");
+	else
+		return std::to_string(fileId) + std::string(".bin");
+}
+
 int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPath, const char* outputFolderPath)
 {
 	std::ifstream descriptionFile(fileDescriptionFilePath);
@@ -510,25 +521,37 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 		return 1;
 	}
 
-	std::string currentRelocFileName;
+	std::filesystem::create_directory(outputFolderPath);
+	std::unordered_map<int, std::string> fileIdToNameDict;
+	int currentRelocFileId;
 	u8* relocFileBuffer = NULL;
 	std::string line;
 	while (std::getline(descriptionFile, line))
 	{
-		if (line.length() < 1)
+		if (line.length() == 0 || line[0] == '#')
 			continue;
-		if (line[0] == '[')
+		if (line[0] == '-')
 		{
-			currentRelocFileName = line.substr(1, line.length() - 2);
+			int fileId = std::stoi(line.substr(1, 3));
+			if (fileIdToNameDict.find(fileId) != fileIdToNameDict.end())
+			{
+				printf("File name specified more than once for file id: %d\n", fileId);
+				return 2;
+			}
+			fileIdToNameDict[fileId] = line.substr(6);
+		}
+		else if (line[0] == '[')
+		{
+			currentRelocFileId = std::stoi(line.substr(1, line.length() - 2));
 			std::string relocFilePath(relocFilesFolderPath);
-			relocFilePath += currentRelocFileName;
+			relocFilePath += ExtractedFileNameFromFileId(currentRelocFileId);
 			if (!LoadRelocFile(relocFilePath.c_str(), &relocFileBuffer))
 			{
 				printf("Reloc file not found: %s\n", relocFilePath.c_str());
 				return 2;
 			}
 		}
-		else if (line.rfind("sprite", 0) == 0)
+		else if (line.rfind("Sprite", 0) == 0)
 		{
 			std::string name, offsetString;
 			u32 q = 7, p = 7;
@@ -556,10 +579,29 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 				lbCommonDecodeSpriteBitmapsSiz4b(sprite, bitmaps, bitmapBuffers);
 			}
 			char pngFilePath[256];
-			sprintf(pngFilePath, "%s/%s_%s.png", outputFolderPath, currentRelocFileName.c_str(), name.c_str());
+
+			if (name == std::string("-"))
+			{
+				if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
+					sprintf(pngFilePath, "%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
+				else
+					sprintf(pngFilePath, "%s/%d.png", outputFolderPath, currentRelocFileId);
+			}
+			else
+			{
+				if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
+				{
+					char relocFileFolderPath[256];
+					sprintf(relocFileFolderPath, "%s/%s", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
+					std::filesystem::create_directory(relocFileFolderPath);
+					sprintf(pngFilePath, "%s/%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str(), name.c_str());
+				}
+				else
+					sprintf(pngFilePath, "%s/%d_%s.png", outputFolderPath, currentRelocFileId, name.c_str());
+			}
 			if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
 			{
-				printf("Failed to convert sprite %lx in file %s to png:\n", targetOffset, currentRelocFileName.c_str());
+				printf("Failed to convert sprite %lx in file %d to png:\n", targetOffset, currentRelocFileId);
 				spritePrint(sprite);
 			}
 		}
