@@ -512,6 +512,20 @@ inline std::string ExtractedFileNameFromFileId(int fileId)
 		return std::to_string(fileId) + std::string(".bin");
 }
 
+enum class RelocFileDatatype {
+	Sprite,
+	Unsupported
+};
+
+RelocFileDatatype DatatypeFromDescriptionLine(const std::string& line)
+{
+	int spaceIndex = 0; for (;line[spaceIndex]!=' ';spaceIndex++);
+	std::string typeString = line.substr(0, spaceIndex);
+	if (typeString == "Sprite")
+		return RelocFileDatatype::Sprite;
+	return RelocFileDatatype::Unsupported;
+}
+
 int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPath, const char* outputFolderPath)
 {
 	std::ifstream descriptionFile(fileDescriptionFilePath);
@@ -539,6 +553,7 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 				return 2;
 			}
 			fileIdToNameDict[fileId] = line.substr(6);
+			continue;
 		}
 		else if (line[0] == '[')
 		{
@@ -550,60 +565,69 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 				printf("Reloc file not found: %s\n", relocFilePath.c_str());
 				return 2;
 			}
+			continue;
 		}
-		else if (line.rfind("Sprite", 0) == 0)
+		RelocFileDatatype type = DatatypeFromDescriptionLine(line);
+
+		switch (type)
 		{
-			std::string name, offsetString;
-			u32 q = 7, p = 7;
-			for (; line[p] != ' '; p++);
-			name = line.substr(q, p - q);
-			q = p + 1;
-			offsetString = line.substr(q);
+			case RelocFileDatatype::Sprite:
+			{
+				std::string name, offsetString;
+				u32 q = 7, p = 7;
+				for (; line[p] != ' '; p++);
+				name = line.substr(q, p - q);
+				q = p + 1;
+				offsetString = line.substr(q);
 
-			u32 targetOffset = std::stoul(offsetString, nullptr, 16);
-			Sprite* sprite = (Sprite*)((u64)relocFileBuffer + targetOffset);
-			fixSpriteEndianness(sprite);
-			Bitmap* bitmaps = (Bitmap*)((u64)relocFileBuffer + (sprite->bitmap.pointer * 4));
-			fixBitmapEndianness(bitmaps, sprite->nbitmaps);
-			std::vector<u8*> bitmapBuffers;
-			bitmapBuffers.resize(sprite->nbitmaps);
-			for (int i = 0; i < sprite->nbitmaps; i++)
-				bitmapBuffers[i] = (u8*)((u64)relocFileBuffer + (bitmaps[i].buf.pointer * 4));
-			u8* palette = NULL;
-			if (sprite->nTLUT > 0)
-			{
-				palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
-			}
-			if (sprite->bmsiz == G_IM_SIZ_4c)
-			{
-				lbCommonDecodeSpriteBitmapsSiz4b(sprite, bitmaps, bitmapBuffers);
-			}
-			char pngFilePath[256];
-
-			if (name == std::string("-"))
-			{
-				if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
-					sprintf(pngFilePath, "%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
-				else
-					sprintf(pngFilePath, "%s/%d.png", outputFolderPath, currentRelocFileId);
-			}
-			else
-			{
-				if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
+				u32 targetOffset = std::stoul(offsetString, nullptr, 16);
+				Sprite* sprite = (Sprite*)((u64)relocFileBuffer + targetOffset);
+				fixSpriteEndianness(sprite);
+				Bitmap* bitmaps = (Bitmap*)((u64)relocFileBuffer + (sprite->bitmap.pointer * 4));
+				fixBitmapEndianness(bitmaps, sprite->nbitmaps);
+				std::vector<u8*> bitmapBuffers;
+				bitmapBuffers.resize(sprite->nbitmaps);
+				for (int i = 0; i < sprite->nbitmaps; i++)
+					bitmapBuffers[i] = (u8*)((u64)relocFileBuffer + (bitmaps[i].buf.pointer * 4));
+				u8* palette = NULL;
+				if (sprite->nTLUT > 0)
 				{
-					char relocFileFolderPath[256];
-					sprintf(relocFileFolderPath, "%s/%s", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
-					std::filesystem::create_directory(relocFileFolderPath);
-					sprintf(pngFilePath, "%s/%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str(), name.c_str());
+					palette = (u8*)((u64)relocFileBuffer + (sprite->LUT.pointer * 4));
+				}
+				if (sprite->bmsiz == G_IM_SIZ_4c)
+				{
+					lbCommonDecodeSpriteBitmapsSiz4b(sprite, bitmaps, bitmapBuffers);
+				}
+				char pngFilePath[256];
+
+				if (name == std::string("-"))
+				{
+					if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
+						sprintf(pngFilePath, "%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
+					else
+						sprintf(pngFilePath, "%s/%d.png", outputFolderPath, currentRelocFileId);
 				}
 				else
-					sprintf(pngFilePath, "%s/%d_%s.png", outputFolderPath, currentRelocFileId, name.c_str());
+				{
+					if (fileIdToNameDict.find(currentRelocFileId) != fileIdToNameDict.end())
+					{
+						char relocFileFolderPath[256];
+						sprintf(relocFileFolderPath, "%s/%s", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str());
+						std::filesystem::create_directory(relocFileFolderPath);
+						sprintf(pngFilePath, "%s/%s/%s.png", outputFolderPath, fileIdToNameDict[currentRelocFileId].c_str(), name.c_str());
+					}
+					else
+						sprintf(pngFilePath, "%s/%d_%s.png", outputFolderPath, currentRelocFileId, name.c_str());
+				}
+				if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
+				{
+					printf("Failed to convert sprite %lx in file %d to png:\n", targetOffset, currentRelocFileId);
+					spritePrint(sprite);
+				}
 			}
-			if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
-			{
-				printf("Failed to convert sprite %lx in file %d to png:\n", targetOffset, currentRelocFileId);
-				spritePrint(sprite);
-			}
+			default:
+				// ignore unsupported types
+				break;
 		}
 	}
 	return 0;
