@@ -621,7 +621,7 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 				}
 				if (!SpriteToPng(sprite, bitmaps, bitmapBuffers, palette, pngFilePath))
 				{
-					printf("Failed to convert sprite %lx in file %d to png:\n", targetOffset, currentRelocFileId);
+					printf("Failed to convert sprite %x in file %d to png:\n", targetOffset, currentRelocFileId);
 					spritePrint(sprite);
 				}
 			}
