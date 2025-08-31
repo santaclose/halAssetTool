@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <assert.h>
+#include <math.h>
 #include <fstream>
 #include <vector>
 #include <string>
@@ -11,6 +12,13 @@
 #include "sprite.h"
 
 #define COMPRESSED_FILE_COUNT 499
+
+#define U3_TO_U8(num) roundf(num * (255.0f/7.0f))
+#define U8_TO_U3(num) roundf(num / (255.0f/7.0f))
+#define U4_TO_U8(num) (num * (255/15))
+#define U8_TO_U4(num) (num / (255/15))
+#define U5_TO_U8(num) roundf(num * (255.0f/31.0f))
+#define U8_TO_U5(num) roundf(num / (255.0f/31.0f))
 
 u8 lbCommonGetBitmapDecodeNibble(u8 index)
 {
@@ -309,7 +317,7 @@ void* SampleGrayscale(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u32 bit
 			*outI = ((bitmapBuffer[targetByte] & 0xf0) >> 4);
 		else
 			*outI = (bitmapBuffer[targetByte] & 0x0f);
-		*outI = (*outI) | ((*outI) << 4);
+		*outI = U4_TO_U8(*outI);
 		return &bitmapBuffer[targetByte];
 	}
 	case 8:
@@ -333,15 +341,15 @@ void* SampleGrayscaleAlpha(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u3
 		u32 targetByte = offsetInPixels / 2;
 		if (offsetInPixels % 2 == 0)
 		{
-			*outI = ((bitmapBuffer[targetByte] & 0xe0));
+			*outI = ((bitmapBuffer[targetByte] & 0xe0) >> 5);
 			*outA = ((bitmapBuffer[targetByte] & 0x10) >> 4);
 		}
 		else
 		{
-			*outI = ((bitmapBuffer[targetByte] & 0x0e) << 4);
+			*outI = ((bitmapBuffer[targetByte] & 0x0e) >> 1);
 			*outA = ((bitmapBuffer[targetByte] & 0x01));
 		}
-		*outI = (*outI) | ((*outI) >> 3) | ((*outI) >> 6);
+		*outI = U3_TO_U8(*outI);
 		*outA *= 255;
 
 		return &bitmapBuffer[targetByte];
@@ -352,8 +360,8 @@ void* SampleGrayscaleAlpha(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u3
 		u8 byte = bitmapBuffer[targetByte];
 		*outI = ((byte & 0xf0) >> 4);
 		*outA = ((byte & 0x0f));
-		*outI = (*outI) | ((*outI) << 4);
-		*outA = (*outA) | ((*outA) << 4);
+		*outI = U4_TO_U8(*outI);
+		*outA = U4_TO_U8(*outA);
 		return &bitmapBuffer[targetByte];
 	}
 	case 16:
@@ -390,9 +398,9 @@ void* SampleRgba(u32 y, u32 x, u8* bitmapBuffer, u32 widthInPixels, u32 bitsPerP
 		*outG = ((hword & 0x07c0) >> 6);
 		*outB = ((hword & 0x003e) >> 1);
 		*outA = (hword & 0x0001) * 255;
-		*outR = ((*outR) << 3) | ((*outR) >> 2);
-		*outG = ((*outG) << 3) | ((*outG) >> 2);
-		*outB = ((*outB) << 3) | ((*outB) >> 2);
+		*outR = U5_TO_U8(*outR);
+		*outG = U5_TO_U8(*outG);
+		*outB = U5_TO_U8(*outB);
 		return &bitmapBuffer[targetByte];
 	}
 	default:
