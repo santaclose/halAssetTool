@@ -554,13 +554,14 @@ int Extract(const char* fileDescriptionFilePath, const char* relocFilesFolderPat
 			continue;
 		if (line[0] == '-')
 		{
-			int fileId = std::stoi(line.substr(1, 3));
+			size_t colonPos = line.find(':');
+			int fileId = std::stoi(line.substr(1, colonPos - 1));
 			if (fileIdToNameDict.find(fileId) != fileIdToNameDict.end())
 			{
 				printf("File name specified more than once for file id: %d\n", fileId);
 				return 2;
 			}
-			fileIdToNameDict[fileId] = line.substr(6);
+			fileIdToNameDict[fileId] = line.substr(colonPos + 2);
 			continue;
 		}
 		else if (line[0] == '[')
